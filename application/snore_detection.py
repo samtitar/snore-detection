@@ -18,14 +18,16 @@ class Classifier(nn.Module):
     def __init__(self, n_features=32):
         super(Classifier, self).__init__()
         
-        self.lin1 = nn.Linear(n_features, 50)
-        self.lin2 = nn.Linear(50, 60)
-        self.lstm = nn.LSTM(60, 30, bidirectional=True, batch_first=True)
-        self.lin3 = nn.Linear(60, 1)
+        self.lin1 = nn.Linear(n_features, 150)
+        self.lin2 = nn.Linear(150, 150)
+        self.lstm = nn.LSTM(150, 75, bidirectional=True, batch_first=True)
+        self.lin3 = nn.Linear(150, 1)
+        self.drop = nn.Dropout(0.2)
     
     def forward(self, x, hidden):
         # Create mind vector and run trough LSTM
         y = F.relu(self.lin1(x))
+        y = self.drop(y)
         y = F.relu(self.lin2(y))
         y, hidden = self.lstm(y, hidden)
         
@@ -33,7 +35,9 @@ class Classifier(nn.Module):
         y = y[:, -1, :]
         
         # Classify
-        return torch.sigmoid(self.lin3(y)), hidden
+        y = self.drop(y)
+        y = torch.sigmoid(self.lin3(y))
+        return y, hidden
 
 model = Classifier(n_features=N_FEATURES)
 model.eval()
