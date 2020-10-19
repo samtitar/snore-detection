@@ -1,0 +1,130 @@
+<html>
+    <head>
+        <title>Snore Detector | Sam Titarsolej</title>
+
+        <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300&display=swap" rel="stylesheet">
+        <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@100&family=Varela&display=swap" rel="stylesheet">
+
+        <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+        <script src="//cdnjs.cloudflare.com/ajax/libs/socket.io/2.2.0/socket.io.js"></script>
+
+        <link rel='stylesheet' href='/static/index.css'>
+    </head>
+    <body>
+        <div class='page-container'>
+            <div id='start' class='start-button'>
+                <p>START</p>
+            </div>
+
+            <div id='results'>
+                <div class='rating-text'>
+                    <span id='score' class='score'></span>
+                </div>
+
+                <div class='rating-border'>
+                    <div class='rating-fill'></div>
+                </div>
+
+                <audio id="alarm" src="static/alarm.mp3" preload="auto"></audio>
+            </div>
+        </div>
+        <div class='footer'>
+            <a href='/about'>About</a> | By Sam Titarsolej (<a href='http://samtitarsolej.nl'>samtitarsolej.nl</a>)
+        </div>
+    </body>
+
+    <script>
+        // Track confidence for alarm
+        var alarm_conf = new Array(10).fill(0);
+        var alarm_playing = false;
+
+        // Manage connection with server
+        var socket = io();
+        var clientID;
+
+        // Manage audio stream
+        var stream;
+        var buffer_len = 8192;
+        var audio_context = new AudioContext();
+        var audio_processor = audio_context.createScriptProcessor(buffer_len, 1, 1);
+        audio_processor.connect(audio_context.destination);
+
+        $(function() {
+            $('#results').hide();
+
+            $('#start').click(function() {
+                $('#start').fadeOut('slow', function() {
+                    $('#results').fadeIn();
+                });
+
+                // Start audio device
+                navigator.mediaDevices.getUserMedia({ video: false, audio: true }).then(start_stream).catch(err => {
+                    console.log('getUserMedia error: ', err);
+                });
+
+                audio_context.resume();
+            })
+        });
+
+        function start_stream(stream_obj) {
+            stream = stream_obj;
+
+            // Create output stream if audio device started correctly
+            input = audio_context.createMediaStreamSource(stream);
+            input.connect(audio_processor);
+        
+            audio_processor.onaudioprocess = event => {
+                handle_microphone(event);
+            };
+        }
+
+        function handle_microphone(event) {
+            // Send audio stream to server
+            const signal = event.inputBuffer.getChannelData(0);
+            socket.emit('predict', signal, clientID);
+        }
+
+        function sigmoid(x) {
+            return 1 / (1 + Math.pow(Math.E, -10 * (x - 0.5)));
+        }
+
+        socket.on('client_id', function(result) {
+            if (!result['error']) {
+                clientID = result['id'];
+            }
+        });
+
+        socket.on('prediction', function(result) {
+            // Handle prediction result from server
+            if (!result['error']) {
+                var confidence = result['confidence'];
+                confidence = sigmoid(confidence) - 0.01;
+
+                // Track alarm confidence
+                alarm_conf.shift();
+                if (confidence > 0.5) {
+                    alarm_conf.push(1);
+                } else {
+                    alarm_conf.push(0);
+                }
+
+                var alarm_sum = alarm_conf.reduce((a, b) => a + b, 0);
+                var alarm_average = alarm_sum / alarm_conf.length;
+
+                // Check if alarm needs to be played
+                if (alarm_average > 0.5 && !alarm_playing) {
+                    $('#alarm')[0].play();
+                    alarm_playing = true;
+                }
+
+                // Update text and bar
+                $('#score').text((Math.round(confidence * 100))  + '%');
+                $('.rating-fill').animate({ width: (Math.round(confidence * 100))  + '%' }, 1);
+            }
+        });
+
+        $('#alarm').on('ended', function() {
+            alarm_playing = false;
+         });
+    </script>
+</html>
