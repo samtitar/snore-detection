@@ -11,7 +11,7 @@ import json
 import librosa
 import numpy as np
 
-N_FEATURES = 20
+N_FEATURES = 32
 S_LENGTH = 17
 
 class Classifier(nn.Module):
@@ -40,6 +40,8 @@ class Classifier(nn.Module):
         return y, hidden
 
 model = Classifier(n_features=N_FEATURES)
+model_state = torch.load('model.pt')
+model.load_state_dict(model_state)
 model.eval()
 
 app = Flask(__name__)
@@ -68,8 +70,8 @@ def connect():
     connection = {}
 
     # Initialize session hidden and cell state for client
-    connection['hidd'] = torch.zeros(2, 1, 30)
-    connection['cell'] = torch.zeros(2, 1, 30)
+    connection['hidd'] = torch.zeros(2, 1, 75)
+    connection['cell'] = torch.zeros(2, 1, 75)
 
     connections.append(connection)
     emit('client_id',  { 'id': len(connections) - 1 })
@@ -95,7 +97,5 @@ def predict(signal, client_id):
     emit('prediction', { 'confidence': prediction })
 
 if __name__ == '__main__':
-    model_state = torch.load('model.pt')
-    model.load_state_dict(model_state)
     app.run(host='0.0.0.0')
     socketio.run(app)
